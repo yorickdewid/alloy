@@ -40,11 +40,15 @@
 #define IF_KEYWORD					"if"
 #define ELSE_KEYWORD				"else"
 #define FOR_KEYWORD					"for"
+#define ENUM_KEYWORD				"enum"
 #define MATCH_KEYWORD				"match"
 #define CONTINUE_KEYWORD			"continue"
 #define RETURN_KEYWORD				"return"
 #define BREAK_KEYWORD				"break"
 #define LINKER_FLAG_KEYWORD			"linker_flag"
+#define IMPL_KEYWORD				"impl"
+#define IMPL_AS_KEYWORD				"as"
+#define ELSE_KEYWORD 				"else"
 
 /**
  * Various operators that are used in the parser, also used
@@ -264,23 +268,6 @@ LeaveStat *parseLeaveStat(Parser *parser);
 IncDecStat *parseIncDecStat(Parser *parser);
 
 /**
- * Parses member access, for instance:
- *
- *     a[0].createSomething().y = 10;
- *
- * Broken, not used FIXME
- * @param  parser the parser instance
- */
-MemberAccess *parseMemberAccess(Parser *parser);
-
-/**
- * Parses member expressions
- * Broken, not used FIXME
- * @param  parser the parser instance
- */
-MemberExpr *parseMemberExpr(Parser *parser);
-
-/**
  * Parses an implementation block, i.e a group of functions
  * @param  parser the parser instance
  * @param  name   the name of the implementation, or struct owner
@@ -335,13 +322,6 @@ VariableDecl *parseVariableDecl(Parser *parser);
  * @param  parser the parser instance
  */
 Declaration *parseDeclaration(Parser *parser);
-
-/**
- * Parses a base type, or an identifier type. This is used
- * for pointer types I believe.
- * @param  parser the parser instance
- */
-BaseType *parseBaseType(Parser *parser);
 
 /**
  * Parses a type name, or an identifier for an expression?

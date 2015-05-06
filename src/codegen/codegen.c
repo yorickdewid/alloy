@@ -34,16 +34,17 @@ const char *BOILERPLATE =
  */
 const char *NODE_NAME[] = {
 	"IDENTIFIER_LIST_NODE", "IDENTIFIER_NODE", "LITERAL_NODE", "BINARY_EXPR_NODE",
-	"UNARY_EXPR_NODE", "ARRAY_SUB_EXPR_NODE", "MEMBER_ACCESS_NODE",
 	"PRIMARY_EXPR_NODE", "EXPR_NODE", "TYPE_NAME_NODE", "TYPE_LIT_NODE", "PAREN_EXPR_NODE",
-	"ARRAY_TYPE_NODE", "POINTER_TYPE_NODE", "FIELD_DECL_NODE",
+	"ARRAY_TYPE_NODE", "POINTER_TYPE_NODE", "FIELD_DECL_NODE", "UNARY_EXPR_NODE",
 	"FIELD_DECL_LIST_NODE", "STRUCT_DECL_NODE", "STATEMENT_LIST_NODE",
-	"BLOCK_NODE", "PARAMETER_SECTION_NODE", "PARAMETERS_NODE", "IMPL_NODE",
+	"BLOCK_NODE", "PARAMETER_SECTION_NODE", "PARAMETERS_NODE", "IMPL_NODE", "ENUM_DECL_NODE",
 	"FUNCTION_SIGNATURE_NODE", "FUNCTION_DECL_NODE", "VARIABLE_DECL_NODE", "FUNCTION_CALL_NODE",
 	"DECLARATION_NODE", "INC_DEC_STAT_NODE", "RETURN_STAT_NODE", "BREAK_STAT_NODE",
 	"CONTINUE_STAT_NODE", "LEAVE_STAT_NODE", "ASSIGNMENT_NODE", "UNSTRUCTURED_STATEMENT_NODE",
 	"ELSE_STAT_NODE", "IF_STAT_NODE", "MATCH_CLAUSE_STAT", "MATCH_STAT_NODE", "FOR_STAT_NODE",
-	"STRUCTURED_STATEMENT_NODE", "STATEMENT_NODE", "TYPE_NODE", "POINTER_FREE_NODE"
+	"STRUCTURED_STATEMENT_NODE", "STATEMENT_NODE", "TYPE_NODE", "POINTER_FREE_NODE", "TUPLE_TYPE_NODE",
+	"TUPLE_EXPR_NODE", "OPTION_TYPE_NODE", 
+	"MACRO_NODE", "USE_MACRO_NODE", "LINKER_FLAG_MACRO_NODE", "EXPR_STAT_NODE", "ARRAY_INITIALIZER_NODE"
 };
 
 CodeGenerator *createCodeGenerator(Vector *sourceFiles) {
@@ -62,13 +63,13 @@ void emitCode(CodeGenerator *self, const char *fmt, ...) {
 	switch (self->writeState) {
 		case WRITE_SOURCE_STATE:
 			vfprintf(self->currentSourceFile->outputFile, fmt, args);
-			va_end(args);
 			break;
 		case WRITE_HEADER_STATE:
 			vfprintf(self->currentSourceFile->headerFile->outputFile, fmt, args);
-			va_end(args);
 			break;
 	}
+
+	va_end(args);
 }
 
 void consumeAstNode(CodeGenerator *self) {
@@ -80,9 +81,6 @@ void consumeAstNodeBy(CodeGenerator *self, int amount) {
 }
 
 void emitLiteral(CodeGenerator *self, Literal *lit) {
-	if (lit->type == HEX) {
-		
-	}
 	emitCode(self, "%s", lit->value);
 }
 
@@ -105,6 +103,21 @@ void emitUnaryExpr(CodeGenerator *self, UnaryExpr *expr) {
 	emitExpression(self, expr->lhand);
 }
 
+void emitArrayInitializer(CodeGenerator *self, ArrayInitializer *arr) {
+	if (arr == NULL || arr->values == NULL) {
+		printf("something is null, we're leaving..\n");
+		return;
+	}
+	emitCode(self, "{");
+	for (int i = 0; i < arr->values->size; i++) {
+		emitExpression(self, getVectorItem(arr->values, i));
+		if (arr->values->size > 1 && i != arr->values->size - 1) {
+			emitCode(self, ", ");
+		}
+	}
+	emitCode(self, "}");
+}
+
 void emitExpression(CodeGenerator *self, Expression *expr) {
 	switch (expr->exprType) {
 		case TYPE_NODE: emitType(self, expr->type); break;
@@ -112,8 +125,9 @@ void emitExpression(CodeGenerator *self, Expression *expr) {
 		case BINARY_EXPR_NODE: emitBinaryExpr(self, expr->binary); break;
 		case UNARY_EXPR_NODE: emitUnaryExpr(self, expr->unary); break;
 		case FUNCTION_CALL_NODE: emitFunctionCall(self, expr->call); break;
+		case ARRAY_INITIALIZER_NODE: emitArrayInitializer(self, expr->arrayInitializer); break;
 		default:
-			printf("Unknown node in expression %s\n", NODE_NAME[expr->exprType]);
+			printf("Unknown node in expression %d\n", expr->exprType);
 			break;
 	}
 }
@@ -121,18 +135,12 @@ void emitExpression(CodeGenerator *self, Expression *expr) {
 void emitTypeLit(CodeGenerator *self, TypeLit *lit) {
 	switch (lit->type) {
 		case ARRAY_TYPE_NODE: {
-			emitCode(self, "[");
-			emitExpression(self, lit->arrayType->length);
-			emitCode(self, "]");
+			emitType(self, lit->arrayType->type);
 			break;
 		}
 		case POINTER_TYPE_NODE: {
-			char *name = lit->pointerType->baseType->type->name;
-			emitCode(self, "%s*", name);
-			break;
-		}
-		default: {
-			printf("wat type lit\n");
+			emitType(self, lit->pointerType->type);
+			emitCode(self, "*");
 			break;
 		}
 	}
@@ -152,11 +160,17 @@ void emitType(CodeGenerator *self, Type *type) {
 void emitParameters(CodeGenerator *self, Parameters *params) {
 	for (int i = 0; i < params->paramList->size; i++) {
 		ParameterSection *param = getVectorItem(params->paramList, i);
+		bool isArray = param->type->type == TYPE_LIT_NODE 
+					&& param->type->typeLit->type == ARRAY_TYPE_NODE;
+
 		if (!param->mutable) {
 			emitCode(self, "const ");
 		}
 		emitType(self, param->type);
 		emitCode(self, " %s", param->name);
+		if (isArray) {
+			emitCode(self, "[]");
+		}
 
 		if (params->paramList->size > 1 && i != params->paramList->size - 1) {
 			emitCode(self, ", "); // cleaner formatting
@@ -169,12 +183,20 @@ void emitFieldList(CodeGenerator *self, FieldDeclList *list) {
 
 	for (int i = 0; i < size; i++) {
 		FieldDecl *decl = getVectorItem(list->members, i);
+		// hack
+		bool isArray = decl->type->type == TYPE_LIT_NODE 
+					&& decl->type->typeLit->type == ARRAY_TYPE_NODE;
+
 		emitCode(self, "\t");
 		if (!decl->mutable) {
 			emitCode(self, "const ");
 		}
 		emitType(self, decl->type);
-		emitCode(self, " %s;" CC_NEWLINE, decl->name);
+		emitCode(self, " %s", decl->name);
+		if (isArray) {
+			emitCode(self, "[]");
+		}
+		emitCode(self, ";" CC_NEWLINE);
 	}
 }
 
@@ -208,9 +230,14 @@ void emitFunctionDecl(CodeGenerator *self, FunctionDecl *decl) {
 	self->writeState = WRITE_HEADER_STATE;
 	emitType(self, decl->signature->type);
 	emitCode(self, " %s(", decl->signature->name);
-	if (decl->signature->owner && decl->signature->ownerArg) {
-		// assumes its a pointer, probably not a good idea.
-		emitCode(self, "%s *%s", decl->signature->owner, decl->signature->ownerArg);
+	if (decl->signature->owner) {
+		if (decl->signature->ownerArg) {
+			// assumes its a pointer, probably not a good idea.
+			emitCode(self, "%s *%s", decl->signature->owner, decl->signature->ownerArg);
+		}
+		else {
+			emitCode(self, "%s *self", decl->signature->owner, decl->signature->ownerArg);
+		}
 
 		// this will emit a comma if there are more than zero paramters.
 		if (decl->signature->parameters->paramList->size > 0) {
@@ -230,10 +257,14 @@ void emitFunctionDecl(CodeGenerator *self, FunctionDecl *decl) {
 		// definition
 		emitType(self, decl->signature->type);
 		emitCode(self, " %s(", decl->signature->name);
-		if (decl->signature->owner && decl->signature->ownerArg) {
-			// this should work?
-			// probably shouldnt be a pointer
-			emitCode(self, "%s *%s", decl->signature->owner, decl->signature->ownerArg);
+		if (decl->signature->owner) {
+			if (decl->signature->ownerArg) {
+				// assumes its a pointer, probably not a good idea.
+				emitCode(self, "%s *%s", decl->signature->owner, decl->signature->ownerArg);
+			}
+			else {
+				emitCode(self, "%s *self", decl->signature->owner, decl->signature->ownerArg);
+			}
 
 			// this will emit a comma if there are more than zero paramters.
 			if (decl->signature->parameters->paramList->size > 0) {
@@ -251,18 +282,23 @@ void emitFunctionDecl(CodeGenerator *self, FunctionDecl *decl) {
 }
 
 void emitVariableDecl(CodeGenerator *self, VariableDecl *decl) {
+	// hack
+	bool isArray = decl->type->type == TYPE_LIT_NODE 
+					&& decl->type->typeLit->type == ARRAY_TYPE_NODE;
+
 	if (!decl->mutable) {
 		emitCode(self, "const ");
 	}
 	emitType(self, decl->type);
+	emitCode(self, " %s", decl->name);
+	if (isArray) {
+		emitCode(self, "[]");
+	}
 	if (decl->assigned) {
-		emitCode(self, " %s = ", decl->name);
+		emitCode(self, " = ");
 		emitExpression(self, decl->expr);
-		emitCode(self, ";" CC_NEWLINE);
 	}
-	else {
-		emitCode(self, " %s;" CC_NEWLINE, decl->name);
-	}
+	emitCode(self, ";" CC_NEWLINE);
 }
 
 void emitWhileForLoop(CodeGenerator *self, ForStat *stmt) {
@@ -291,16 +327,6 @@ void emitBlock(CodeGenerator *self, Block *block) {
 	}
 }
 
-void emitMemberExpr(CodeGenerator *self, MemberExpr *mem) {
-	switch (mem->type) {
-		case FUNCTION_CALL_NODE: emitFunctionCall(self, mem->call); break;
-		case ARRAY_TYPE_NODE: printf("todo\n"); break;
-		case UNARY_EXPR_NODE: emitUnaryExpr(self, mem->unary); break;
-		case IDENTIFIER: emitCode(self, "%s", mem->identifier); break;
-		case MEMBER_ACCESS_NODE: printf("todo\n"); break;
-	}	
-}
-
 void emitImpl(CodeGenerator *self, Impl *impl) {
 	for (int i = 0; i < impl->funcs->size; i++) {
 		FunctionDecl *func = getVectorItem(impl->funcs, i);
@@ -309,7 +335,6 @@ void emitImpl(CodeGenerator *self, Impl *impl) {
 }
 
 void emitAssignment(CodeGenerator *self, Assignment *assign) {
-	// emitMemberExpr(self, assign->memberExpr);
 	emitCode(self, "%s = ", assign->iden);
 	emitExpression(self, assign->expr);
 	emitCode(self, ";" CC_NEWLINE);
@@ -376,11 +401,28 @@ void emitForStat(CodeGenerator *self, ForStat *stmt) {
 	}
 }
 
+void emitEnumDecl(CodeGenerator *self, EnumDecl *enumDecl) {
+	emitCode(self, "typedef enum {" CC_NEWLINE);
+	for (int i = 0; i < enumDecl->items->size; i++) {
+		EnumItem *item = getVectorItem(enumDecl->items, i);
+		emitCode(self, "%s", item->name);
+		// if (item->val) { FIXME!!
+		// 	emitCode(self, "=");
+		// 	emitExpression(self, item->val);
+		// }
+		if (enumDecl->items->size > 1 && i != enumDecl->items->size - 1) {
+			emitCode(self, ",");
+		}
+	}
+	emitCode(self, "} %s;" CC_NEWLINE CC_NEWLINE, enumDecl->name);
+}
+
 void emitDeclaration(CodeGenerator *self, Declaration *decl) {
 	switch (decl->type) {
 		case FUNCTION_DECL_NODE: emitFunctionDecl(self, decl->funcDecl); break;
 		case STRUCT_DECL_NODE: emitStructDecl(self, decl->structDecl); break;
 		case VARIABLE_DECL_NODE: emitVariableDecl(self, decl->varDecl); break;
+		case ENUM_DECL_NODE: emitEnumDecl(self, decl->enumDecl); break;
 		default:
 			printf("unknown node in declaration %s\n", NODE_NAME[decl->type]);
 			break;
@@ -409,6 +451,10 @@ void emitUnstructuredStat(CodeGenerator *self, UnstructuredStatement *stmt) {
 		case FUNCTION_CALL_NODE: 
 			emitFunctionCall(self, stmt->call); 
 			emitCode(self, ";" CC_NEWLINE); // pop a semi colon at the end
+			break;
+		case EXPR_STAT_NODE:
+			emitExpression(self, stmt->expr);
+			emitCode(self, ";" CC_NEWLINE);
 			break;
 		case LEAVE_STAT_NODE: emitLeaveStat(self, stmt->leave); break;
 		case ASSIGNMENT_NODE: emitAssignment(self, stmt->assignment); break;

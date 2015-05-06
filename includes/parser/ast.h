@@ -17,24 +17,25 @@
 /** forward declarations */
 typedef struct s_Expression Expression;
 typedef struct s_Type Type;
-typedef struct s_MemberExpr MemberExpr;
-typedef struct {} ContinueStat;
-typedef struct {} BreakStat;
+
+typedef struct { char a; } ContinueStat;
+
+typedef struct { char a; } BreakStat;
 
 /** different types of node for a cleanup */
 typedef enum {
 	IDENTIFIER_LIST_NODE, IDENTIFIER_NODE, LITERAL_NODE, BINARY_EXPR_NODE,
-	UNARY_EXPR_NODE, ARRAY_SUB_EXPR_NODE, MEMBER_ACCESS_NODE,
 	PRIMARY_EXPR_NODE, EXPR_NODE, TYPE_NAME_NODE, TYPE_LIT_NODE, PAREN_EXPR_NODE,
-	ARRAY_TYPE_NODE, POINTER_TYPE_NODE, FIELD_DECL_NODE,
+	ARRAY_TYPE_NODE, POINTER_TYPE_NODE, FIELD_DECL_NODE, UNARY_EXPR_NODE,
 	FIELD_DECL_LIST_NODE, STRUCT_DECL_NODE, STATEMENT_LIST_NODE,
-	BLOCK_NODE, PARAMETER_SECTION_NODE, PARAMETERS_NODE, IMPL_NODE,
+	BLOCK_NODE, PARAMETER_SECTION_NODE, PARAMETERS_NODE, IMPL_NODE, ENUM_DECL_NODE,
 	FUNCTION_SIGNATURE_NODE, FUNCTION_DECL_NODE, VARIABLE_DECL_NODE, FUNCTION_CALL_NODE,
 	DECLARATION_NODE, INC_DEC_STAT_NODE, RETURN_STAT_NODE, BREAK_STAT_NODE,
 	CONTINUE_STAT_NODE, LEAVE_STAT_NODE, ASSIGNMENT_NODE, UNSTRUCTURED_STATEMENT_NODE,
 	ELSE_STAT_NODE, IF_STAT_NODE, MATCH_CLAUSE_STAT, MATCH_STAT_NODE, FOR_STAT_NODE,
-	STRUCTURED_STATEMENT_NODE, STATEMENT_NODE, TYPE_NODE, POINTER_FREE_NODE,
-	MACRO_NODE, USE_MACRO_NODE, LINKER_FLAG_MACRO_NODE
+	STRUCTURED_STATEMENT_NODE, STATEMENT_NODE, TYPE_NODE, POINTER_FREE_NODE, TUPLE_TYPE_NODE,
+	TUPLE_EXPR_NODE, OPTION_TYPE_NODE, 
+	MACRO_NODE, USE_MACRO_NODE, LINKER_FLAG_MACRO_NODE, EXPR_STAT_NODE, ARRAY_INITIALIZER_NODE
 } NodeType;
 
 typedef enum {
@@ -66,6 +67,14 @@ typedef struct {
 } Literal;
 
 /**
+ * A node representing an array
+ * initializer, e.g: [ 1, 1, 1, 1 ]
+ */
+typedef struct {
+	Vector *values;
+} ArrayInitializer;
+
+/**
  * A name of a type.
  */
 typedef struct {
@@ -74,24 +83,17 @@ typedef struct {
 } TypeName;
 
 /**
- * ??
- */
-typedef struct {
-	TypeName *type;
-} BaseType;
-
-/**
  * A pointer type, i.e `int ^`
  */
 typedef struct {
-	BaseType *baseType;
+	Type *type;
 } PointerType;
 
 /**
  * Use statement node
  */
 typedef struct {
-	char *file;
+	Vector *files;
 } UseMacro;
 
 typedef struct {
@@ -118,16 +120,27 @@ typedef struct {
 } EnumItem;
 
 typedef struct {
+	char *name;
 	Vector *items;
 } EnumDecl;
 
+typedef struct {
+	Vector *types;
+} TupleType;
+
+typedef struct {
+	Type *type;
+} OptionType;
+
+typedef struct {
+	Vector *values;
+} TupleExpr;
+
 /**
- * An array type, which contains the length of the array
- * as an expression, and the type of data the array holds.
- * i.e: int[10];
+ * An array type
+ * i.e: []int;
  */
 typedef struct {
-	Expression *length;
 	Type *type;
 } ArrayType;
 
@@ -141,6 +154,8 @@ typedef struct {
 typedef struct {
 	ArrayType *arrayType;
 	PointerType *pointerType;
+	TupleType *tupleType;
+	OptionType *optionType; 
 	int type;
 } TypeLit;
 
@@ -154,16 +169,6 @@ struct s_Type {
 	TypeLit *typeLit;
 	int type;
 };
-
-/**
- * A node representing an array sub expression,
- * for example a[5], or optional array slices, e.g a[5: 5].
- */
-typedef struct {
-	Expression *lhand;
-	Expression *start;
-	Expression *end;
-} ArraySubExpr;
 
 /**
  * A node representing a function call
@@ -198,22 +203,11 @@ struct s_Expression {
 	Literal *lit;
 	BinaryExpr *binary;
 	UnaryExpr *unary;
+	ArrayInitializer *arrayInitializer;
+	TupleExpr *tupleExpr;
 	int exprType;
 };
 
-typedef struct {
-	char *iden;
-	MemberExpr *expr;
-} MemberAccess;
-
-struct s_MemberExpr {
-	Call *call;
-	ArrayType *array;
-	UnaryExpr *unary;
-	char *identifier;
-	MemberAccess *member;
-	int type;
-};
 
 /**
  * Field declaration for a struct
@@ -342,6 +336,7 @@ typedef struct {
 	FunctionDecl *funcDecl;
 	StructDecl *structDecl;
 	VariableDecl *varDecl;
+	EnumDecl *enumDecl;
 	int type;
 } Declaration;
 
@@ -366,7 +361,6 @@ typedef struct {
  */
 typedef struct {
 	char *iden;
-	MemberExpr *memberExpr;
 	Expression *expr;
 } Assignment;
 
@@ -403,6 +397,7 @@ typedef struct {
 	Call *call;
 	Impl *impl;
 	PointerFree *pointerFree;
+	Expression *expr;
 	int type;
 } UnstructuredStatement;
 
@@ -414,12 +409,21 @@ typedef struct {
 } ElseStat;
 
 /**
+ * Else If Block
+ */
+typedef struct {
+	Expression *condition;
+	Block *body;
+} ElseIfStat;
+
+/**
  * If statement node, expr is
  * for a condition
  */
 typedef struct {
 	Expression *expr;
 	Block *body;
+	Vector *elseIfStmts;
 	ElseStat *elseStmt;
 } IfStat;
 
@@ -476,9 +480,9 @@ Node *createNode(void *data, NodeType type);
 
 Impl *createImpl(char *name, char *as);
 
-MemberAccess *createMemberAccess();
+UseMacro *createUseMacro();
 
-UseMacro *createUseMacro(char *file);
+ArrayInitializer *createArrayInitializer();
 
 LinkerFlagMacro *createLinkerFlagMacro(char *flag);
 
@@ -486,19 +490,19 @@ IdentifierList *createIdentifierList();
 
 Literal *createLiteral(char *value, int type);
 
-MemberExpr *createMemberExpr();
-
 TypeLit *createTypeLit();
-
-BaseType *createBaseType();
 
 UnaryExpr *createUnaryExpr();
 
+OptionType *createOptionType(Type *type);
+
+TupleType *createTupleType();
+
+TupleExpr *createTupleExpr();
+
 EnumItem *createEnumItem(char *name);
 
-EnumDecl *createEnumDecl();
-
-ArraySubExpr *createArraySubExpr(Expression *lhand);
+EnumDecl *createEnumDecl(char *name);
 
 Call *createCall(Vector *callee);
 
@@ -508,9 +512,9 @@ BinaryExpr *createBinaryExpr();
 
 TypeName *createTypeName(char *name);
 
-ArrayType *createArrayType(Expression *length, Type *type);
+ArrayType *createArrayType(Type *type);
 
-PointerType *createPointerType(BaseType *type);
+PointerType *createPointerType(Type *type);
 
 FieldDecl *createFieldDecl(Type *type, bool mutable);
 
@@ -554,6 +558,8 @@ PointerFree *createPointerFree(char *name);
 
 ElseStat *createElseStat();
 
+ElseIfStat *createElseIfStat();
+
 IfStat *createIfStat();
 
 MatchClause *createMatchClause();
@@ -574,25 +580,27 @@ void destroyNode(Node *node);
 
 void destroyImpl(Impl *impl);
 
-void destroyMemberAccess(MemberAccess *member);
-
 void destroyUseMacro(UseMacro *use);
+
+void destroyArrayInitializer(ArrayInitializer *array);
 
 void destroyLinkerFlagMacro(LinkerFlagMacro *linker);
 
 void destroyIdentifierList(IdentifierList *list);
 
-void destroyBaseType(BaseType *type);
-
 void destroyLiteral(Literal *lit);
 
 void destroyUnaryExpr(UnaryExpr *rhand);
 
+void destroyTupleType(TupleType *tuple);
+
+void destroyOptionType(OptionType *type);
+
+void destroyTupleExpr(TupleExpr *tuple);
+
 void destroyEnumItem(EnumItem *item);
 
 void destroyEnumDecl(EnumDecl *decl);
-
-void destroyArraySubExpr(ArraySubExpr *rhand);
 
 void destroyCall(Call *call);
 
@@ -605,8 +613,6 @@ void destroyTypeName(TypeName *typeName);
 void destroyArrayType(ArrayType *arrayType);
 
 void destroyPointerType(PointerType *pointerType);
-
-void destroyMemberExpr(MemberExpr *member);
 
 void destroyFieldDecl(FieldDecl *decl);
 
@@ -649,6 +655,8 @@ void destroyMacro(Macro *macro);
 void destroyPointerFree(PointerFree *pntr);
 
 void destroyElseStat(ElseStat *stmt);
+
+void destroyElseIfStat(ElseIfStat *stmt);
 
 void destroyIfStat(IfStat *stmt);
 

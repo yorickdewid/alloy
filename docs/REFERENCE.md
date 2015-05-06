@@ -11,7 +11,6 @@ The design is motivated by the following:
 * Strongly Typed
 * Concise, clean and semantic syntax
 * **No** garbage collection
-* Efficient
 
 The language should be strong enough that it can be self-hosted.
 
@@ -274,7 +273,7 @@ We could write a really simple "math" library with some bindings to C's `<math.h
 And we can use this library in a file:
 
 	// main.aly
-	use "math" // note we don't use "math.aly", just "math"
+	!use "math" // note we don't use "math.aly", just "math"
 
 	fn main(): int {
 		mut x: double = pow(5, 2);
@@ -289,33 +288,8 @@ would be compiled as:
 
 Note that the order matters too. We plan to fix this in the future.
 
-## Pointers and the Memory Model
-Before we talk about pointers, you should have a good understanding of Alloy's memory model. We've
-adopted a memory model initially used and created by the developers of Objective-C,/Swift, namely
-Automatic Reference Counting.
-
-In the memory model you can allocate memory, this memory can then have aliases or references to this
-memory. When memory is allocated, it stores information about the type of memory it's storing, and how
-many aliases there are to this memory.
-
-When this memory you allocate is no longer in use, it is automatically freed by ARC. This means that the
-memory is no longer taking up space when it's not needed, thus making your program more efficient; and
-safer from memory leaks.
-
-However, when you create an alias of some allocated memory and the memory has been freed... the alias still
-exists, and if you attempt to access the allocated memory it would likely crash your program. To make sure that
-memory isnt freed when it's still in use, ARC keeps track of how many aliases there are to the allocated memory.
-ARC will not deallocate any memory if there are still one or more aliases pointing to this memory.
-
 ### Pointers
-With the ARC system, memory management is a lot easier. However, this doesn't completely free you from worrying
-about memory management. Alloy has a bit of a stranger way of allocating memory, you're probably used to using
-a keyword(s) like `new`, or a function call(s) like `malloc`.
-
-We've introduced a few operators for memory management, it may look a bit complicated, but if you understand each
-symbol, it's easier than you think.
-
-Firstly, the caret symbol. The caret (`^`) is what we used to denote a pointer, i.e something that points to an
+The caret (`^`) is what we used to denote a pointer, i.e something that points to an
 address in memory. Then there is the ampersand (`&`), which means **address of**. For instance:
 
 	x: int = 5;
@@ -333,22 +307,96 @@ that points to it. This is again done with the caret (`^`), for example:
 We've introduced a new variable `z`, that stored the value at the address `y`.
 
 ### Managing Memory
-we're still thinking about this...
+Alloy is not a garbage collected language, therefore when you allocate memory, you must free it after you are
+no longer using it.
 
 ## Flow Control
-todo
+### If Statements
+If statements are denoted with the `if` keyword followed by a condition. Parenthesis around an expression
+are optional:
 
-## Tuples
-todo
+	if x == 1 {
+		....
+	}
+
+### Match Statements
+Match statements are very similar to switchs in C. Note that by default, a match clause will break instead
+of continuing to other clauses. A match is denoted with the `match` keyword, followed by something to match
+and then a block:
+
+	match some_var {
+		...
+	}
+
+Within the match statement, are match clauses. Match clauses consist of an expression, followed by a single
+statement operator `->`, or a block if you want to do multiple statements:
+
+	match x {
+		0 -> ...;
+		1 {
+
+		};
+	}
+
+Each clause must end with a semi-colon, including blocks.
+
+### For Loops
+For loops are a little more different in Alloy. There are no while loops, or do while loops.
+
+#### Infinite Loop
+If you want to just loop till you break, you write a for loop with no condition, for instance:
+
+	for {
+		printf("loop....\n");
+	}
+
+#### "While" Loop
+If you want to loop while a condition is true, you do the same for loop, but with a condition
+after the `for` keyword:
+
+	for x {
+		printf("loop while x is true\n");
+	}
+
+#### "Traditional" For Loop
+Finally, if you want to iterate from A to B or vice versa, you write a for loop with two conditions.
+The first being the range, the second condition being the step. For instance:
+
+	for x < 10, x++ {
+		...
+	}
+
+Note that `x` is not defined in the for loop, but must be defined outside of the for loop. For instance:
+
+	mut x: int = 0;
+	for x < 10, x++ {
+		...
+	}
 
 ## Option Types
 todo
 
 ## Enums
-todo
+An enumeration is denoted with the `enum` keyword, followed by a name, and a block. The block contains
+the enum items, which are identifiers (typically uppercase) with an optional default value. Enum items
+must be terminated with a comma (excluding the final item in the enumerion). For example:
+
+	enum DogBreed {
+		POODLE,
+		GRAYHOUND,
+		SHIH_ZU
+	}
+
+To refer to the enum item, you need to specify the name of the enumeration, followed by two colons `::`,
+and finally the enum item.
+
+	fn main(): int {
+		match x {
+			DogBreed::POODLE -> ...;
+		}
+	}
 
 ## Arrays
-todo
 
 ## Generics
 we're still thinking about this...
